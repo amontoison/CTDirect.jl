@@ -5,8 +5,9 @@ Solve the optimal control problem
 
 Input : 
 ocp : functional description of the optimal control problem (cf. ocp.jl)
-N   : number of time steps for the discretization
+grid_size   : number of time steps for the discretization
       Int
+rk_method : rRunge-Kutta method
 
 Output
 sol : solution of the discretized problem
@@ -22,6 +23,7 @@ julia> solve(ocp)
 function solve(ocp::OptimalControlModel, 
   description...;
   grid_size::Integer=__grid_size_direct(),
+  rk_method:: Symbol=__rk_method(),
   print_level::Integer=__print_level_ipopt(),
   mu_strategy::String=__mu_strategy_ipopt(),
   display::Bool=__display(),
@@ -33,8 +35,11 @@ function solve(ocp::OptimalControlModel,
   # no display
   print_level = display ?  print_level : 0
 
+  # build internal structure for direct method
+  ctd = CTDirect_data(ocp, grid_size, rk_method, init)
+
   # from OCP to NLP
-  nlp = ADNLProblem(ocp, grid_size, init)
+  nlp = ADNLProblem(ocp, ctd)
 
   # solve by IPOPT: more info at 
   # https://github.com/JuliaSmoothOptimizers/NLPModelsIpopt.jl/blob/main/src/NLPModelsIpopt.jl#L119
@@ -44,7 +49,7 @@ function solve(ocp::OptimalControlModel,
   ipopt_solution = ipopt(nlp, print_level=print_level, mu_strategy=mu_strategy, sb="yes"; kwargs...)
 
   # Parse solution from NLP to OCP variables and constraints
-  sol = DirectSolution(ocp, grid_size, ipopt_solution, init)
+  sol = DirectSolution(ocp, ctd, ipopt_solution)
 
   return sol
 

@@ -1,4 +1,26 @@
 # struct for ocop/nlp info
+mutable struct rk_method_data
+    stage::Integer
+    butcher_a::Matrix{<:MyNumber}
+    butcher_b::Vector{<:MyNumber}
+    butcher_c::Vector{<:MyNumber}
+    properties::Dict{Symbol, Tuple{Vararg{Any}}}
+
+    function rk_method_data(name::Symbol)
+    rk = new()
+    if name == :trapeze
+        rk.stage  = 2
+        rk.butcher_a = [0 0; 0.5 0.5]
+        rk.butcher_b = [0.5, 0.5]
+        rk.butcher_c = [0, 1]
+        rk.properties = Dict(:name => "trapeze", :order => 2, :implicite => true)
+    else
+        error(name, " method not yet implemented")
+    end
+    return rk
+    end 
+end
+
 mutable struct CTDirect_data
 
     ## OCP
@@ -46,7 +68,8 @@ mutable struct CTDirect_data
     dim_NLP_state
     dim_NLP_constraints
     dim_NLP_variables
-    dim_NLP_steps
+    dim_NLP_steps       # grid_size
+    rk::rk_method_data  
     dynamics_lagrange_to_mayer
     NLP_init
 
@@ -67,7 +90,7 @@ mutable struct CTDirect_data
 
 
     # put this constructor in CTDirect.jl or in utils.jl ?
-    function CTDirect_data(ocp::OptimalControlModel, N::Integer, init=nothing)
+    function CTDirect_data(ocp::OptimalControlModel, N::Integer, rk_method::Symbol, init=nothing)
 
         ctd = new()
 
@@ -104,18 +127,16 @@ mutable struct CTDirect_data
 
         ## Non Linear Programming NLP
         ctd.dim_NLP_steps = N
+        ctd.rk = rk_method_data(rk_method)
         ctd.NLP_init = init
 
         # Mayer to Lagrange reformulation: 
         # additional state with Lagrange cost as dynamics and null initial condition
+        ctd.dim_NLP_state = ctd.state_dimension  
+        ctd.dim_NLP_constraints = N * ((ctd.rk.stage+1)*ctd.dim_NLP_state + ctd.dim_path_constraints) + ctd.dim_path_constraints + ctd.dim_boundary_conditions
         if ctd.has_lagrange_cost
-            ctd.dim_NLP_state = ctd.state_dimension + 1  
-            ctd.dim_NLP_constraints = N * (ctd.dim_NLP_state + ctd.dim_path_constraints) +
-            ctd.dim_path_constraints + ctd.dim_boundary_conditions + 1           
-        else
-            ctd.dim_NLP_state = ctd.state_dimension  
-            ctd.dim_NLP_constraints = N * (ctd.dim_NLP_state + ctd.dim_path_constraints) +
-            ctd.dim_path_constraints + ctd.dim_boundary_conditions
+            ctd.dim_NLP_state = ctd.dim_NLP_state + 1  
+            ctd.dim_NLP_constraints = ctd.dim_NLP_constraints + N * (ctd.rk.stage+1) + 1
         end
         # augmented dynamics (try to evaluate the condition only once cf below)
         #ctd.dynamics_lagrange_to_mayer(t, x, u) = ctd.has_lagrange_cost ? [ctd.dynamics(t, x[1:ctd.state_dimension], u); ctd.lagrange(t, x[1:ctd.state_dimension], u)] : ctd.dynamics(t, x, u) DOES NOT COMPILE
@@ -132,12 +153,10 @@ mutable struct CTDirect_data
         ctd.criterion_min_max = ocp.criterion
 
         # additional variable for free final time
+        ctd.dim_NLP_variables = (N + 1) * ctd.dim_NLP_state + N * ctd.rk.stage * (ctd.control_dimension + ctd.dim_NLP_state)
         if ctd.has_free_final_time
-            ctd.dim_NLP_variables = (N + 1) * (ctd.dim_NLP_state + ctd.control_dimension) + 1
-        else
-            ctd.dim_NLP_variables = (N + 1) * (ctd.dim_NLP_state + ctd.control_dimension)
+            ctd.dim_NLP_variables =  ctd.dim_NLP_variables + 1
         end
-
         return ctd
 
     end
@@ -259,9 +278,7 @@ function variables_bounds(ctd)
 end
 
 
-function ADNLProblem(ocp::OptimalControlModel, N::Integer, init=nothing)
-
-    ctd = CTDirect_data(ocp, N, init)
+function ADNLProblem(ocp::OptimalControlModel, ctd::CTDirect_data)
 
     # IPOPT objective
     function ipopt_objective(xu)
