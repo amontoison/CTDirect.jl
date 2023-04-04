@@ -43,7 +43,7 @@ function set_control_at_time_step!(xu, u, i, nx, N, m, s)
     @assert i <= N-1 "trying to set init for u(t_i) with i >= N"
     start = (N+1)*nx 
     for j in 1:s
-        xu[start + i*m*s +(j-1)*m + 1 : start + i*m*s +(j-1)*m +m] = u[1:m]
+        xu[start+i*m*s+(j-1)*m+1:start+i*m*s+(j-1)*m+m] = u[1:m]
     end
 end
 
