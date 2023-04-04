@@ -3,13 +3,6 @@ println("Double integrator test")
 prob = Problem(:integrator, :dim2, :energy) 
 ocp = prob.model
 
-
-# solve
-println("Is solvable ? ", CTDirect.is_solvable(ocp))
-
-
-
-
 @testset verbose = true showtiming = true ":integrator :dim2 :energy" begin
     N = 1
     ctd = CTDirect.CTDirect_data(ocp, N, nothing)
@@ -47,11 +40,12 @@ println("Is solvable ? ", CTDirect.is_solvable(ocp))
         @test u_var == -l_var
     end
 
+
     # Tests on the numerical solution
     @testset verbose = true showtiming = true "numerical solution" begin
-        #using LinearAlgebra
+
         sol = solve(ocp, grid_size=100, print_level=0) 
-        # check solution
+
         u_sol(t) = prob.solution.control(t)[1]
         u = t -> sol.control(t)[1]
         x_sol(t) = prob.solution.state(t)
@@ -59,15 +53,12 @@ println("Is solvable ? ", CTDirect.is_solvable(ocp))
         T = sol.times
         dT = T[2:end]-T[1:end-1]
         N = length(T)
-        # test on the infty norm of the state
         @test distance_infty(x,x_sol,T) ≈ 0 atol = 0.01
-        #@test maximum([ sqrt(sum((x(T[i])-x_sol(T[i])).^2)) for i in 1:N]) ≈ 0 atol = 0.01
-        # test on the L_2 norm of the control
         @test distance_L2(u,u_sol,T) ≈ 0 atol=1e-1
-        # test on the objectif
         @test sol.objective ≈ prob.solution.objective atol=1e-2
-        # @test constraints_violation(sol) < 1e-6 # ceci n'existe pas dans la OptimalControlSolution pour le moment
+
     end
+
 
 end
 
