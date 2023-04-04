@@ -61,3 +61,5 @@ sol = solve(ocp, grid_size=10, print_level=0, init=init)
 @testset verbose = true showtiming = true ":goddard :all_constraints" begin
     @test sol.objective ≈ prob.solution.objective atol=5e-3
 end
+
+# +++ try to add automatic tests for multipliers, ie sign and complementarity ?
