@@ -2,8 +2,8 @@ module CTDirect
 
 using CTBase
 using DocStringExtensions
-# nlp modeling and resolution
 using NLPModelsIpopt, ADNLPModels
+
 
 # Other declarations
 const nlp_constraints = CTBase.nlp_constraints
