@@ -4,14 +4,17 @@ $(TYPEDSIGNATURES)
 Solve the optimal control problem
 
 Input : 
+
 ocp : functional description of the optimal control problem (cf. ocp.jl)
+
 grid_size   : number of time steps for the discretization
-      Int
-rk_method : rRunge-Kutta method
+
+rk_method : Runge-Kutta method
 
 Output
+
 sol : solution of the discretized problem
-      ...
+
 ```@examples
 julia> using CTDirect
 julia> using CTProblems
@@ -19,7 +22,6 @@ julia> ocp =  Problem((:integrator, :dim2, :energy)
 julia> solve(ocp)
 ```
 """
-
 function solve(ocp::OptimalControlModel, 
   description...;
   grid_size::Integer=__grid_size_direct(),
