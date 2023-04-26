@@ -42,16 +42,16 @@ function get_k_at_time_stage(nlp_x, i, j, nx, N, m, s)
     @assert i <= N-1 "trying to get k_i^j for i >= N"
     @assert 1 <= j <= s "trying to get k_i^j for j > s"
     start = (N+1)*nx + N*s*m
-    return nlp_x[start + i*n*s + (j-1)*n + 1 : start + i*n*s + (j-1)*n + n]
+    return nlp_x[start + i*nx*s + (j-1)*nx + 1 : start + i*nx*s + (j-1)*nx + nx]
 end
 
-function get_state_at_time_stage(nlp_x, i, j, nx, N, rk, h)
+function get_state_at_time_stage(nlp_x, i, j, nx, N, m, rk, h)
     s = rk.stage    
     @assert i <= N-1 "trying to get x_i^j for i >= N"
     @assert 1 <= j <= s "trying to get x_i^j for j > s"
     xij = get_state_at_time_step(nlp_x, i, nx, N)
     for l in 1:s
-        xij = xij + h * rk.butcher_a[j,l] * get_k_at_time_stage(nlp_x, i, l, nx, N, m, rk)
+        xij = xij + h * rk.butcher_a[j,l] * get_k_at_time_stage(nlp_x, i, l, nx, N, m, s)
     end
     return xij
 end

@@ -44,7 +44,7 @@ mutable struct rk_method_data
     butcher_a::Matrix{<:MyNumber}
     butcher_b::Vector{<:MyNumber}
     butcher_c::Vector{<:MyNumber}
-    properties::Dict{Symbol, Tuple{Vararg{Any}}}
+    properties::Dict{Symbol, Any}
 
     function rk_method_data(name::Symbol)
     rk = new()
@@ -354,7 +354,7 @@ function ipopt_constraint(nlp_x, ctd)
     tf = get_final_time(nlp_x, ctd.final_time, ctd.has_free_final_time)
     N = ctd.dim_NLP_steps
     nx = ctd.dim_NLP_state
-    m = ctd.dim_NLP_control
+    m = ctd.control_dimension
     s = ctd.rk.stage
     h = (tf - t0) / N
     c = zeros(eltype(nlp_x), ctd.dim_NLP_constraints)
@@ -367,7 +367,7 @@ function ipopt_constraint(nlp_x, ctd)
         for j in 1:s
             tij = ti + ctd.rk.butcher_c[j]*h
             kij = get_k_at_time_stage(nlp_x, i, j, nx, N, m, s)
-            xij = get_state_at_time_stage(nlp_x, i, j, nx, N, ctd.rk, h)
+            xij = get_state_at_time_stage(nlp_x, i, j, nx, N, m, ctd.rk, h)
             uij = get_control_at_time_stage(nlp_x, i, j, nx, N, m, s)
             c[index:index+nx-1] = kij - ctd.dynamics_lagrange_to_mayer(tij, xij, uij)
             index = index + nx
