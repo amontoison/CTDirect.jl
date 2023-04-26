@@ -1,4 +1,4 @@
-# build generic OCP solution from direct method (NLP) solution
+# build generic OCP solution from direct method (NLP) solution from ipopt
 function _OptimalControlSolution(ocp, ipopt_solution, ctd)
 
     # save general solution data
@@ -38,7 +38,7 @@ function _OptimalControlSolution(ocp, ipopt_solution, ctd)
     sol.iterations = ctd.NLP_iterations
     sol.stopping = :dummy 
     sol.message = "no message" 
-    sol.success = false #
+    sol.success = false #todo cf ipopt return codes
 
     # constraints and multipliers
     if ctd.has_state_constraints
@@ -98,15 +98,19 @@ function parse_ipopt_sol(ctd)
     for i in 1:N+1
         # variables
         X[i,:] = get_state_at_time_step(xu, i-1, ctd.dim_NLP_state, N)
+        +++ this below will compute the average control; rename and also get stage controls
+        +++ nb will ctinterpolate work for rk schemes with nonincreasing c_i coefficients
         U[i,:] = get_control_at_time_step(xu, i-1, ctd.dim_NLP_state, N, ctd.control_dimension)
+        +++ skip or recover kstage variables ?
         # box multipliers (same layout as variables !)
+        +++ check wrt new kstage variables, change for controls
         if length(mult_L) > 0
             mult_state_box_lower[i,:] = get_state_at_time_step(mult_L, i-1, ctd.dim_NLP_state, N)
-            mult_control_box_lower[i,:] = get_control_at_time_step(mult_L, i-1, ctd.dim_NLP_state, N, ctd.control_dimension)
+            +++mult_control_box_lower[i,:] = get_control_at_time_step(mult_L, i-1, ctd.dim_NLP_state, N, ctd.control_dimension)
         end
         if length(mult_U) > 0
             mult_state_box_upper[i,:] = get_state_at_time_step(mult_U, i-1, ctd.dim_NLP_state, N)
-            mult_control_box_upper[i,:] = get_control_at_time_step(mult_U, i-1, ctd.dim_NLP_state, N, ctd.control_dimension)
+            +++mult_control_box_upper[i,:] = get_control_at_time_step(mult_U, i-1, ctd.dim_NLP_state, N, ctd.control_dimension)
         end
     end
 
@@ -122,6 +126,7 @@ function parse_ipopt_sol(ctd)
     mult_mixed_constraints = zeros(N+1,ctd.dim_mixed_constraints)
     index = 1
     for i in 1:N
+        +++ skip or recover kstage equations
         # state equation
         P[i,:] = lambda[index:index+ctd.dim_NLP_state-1]
         index = index + ctd.dim_NLP_state
