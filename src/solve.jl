@@ -54,14 +54,15 @@ function solve(ocp::OptimalControlModel,
         nlp = ADNLPModel(xu -> ipopt_objective(xu, ctd), xu0, l_var, u_var, xu -> ipopt_constraint(xu, ctd), lb, ub) 
     end
 
-    # solve
+    # solve by IPOPT: +++ later use more advanced call for callback use
     if :ipopt in method
         # https://github.com/JuliaSmoothOptimizers/NLPModelsIpopt.jl/blob/main/src/NLPModelsIpopt.jl#L119
         # options of ipopt: https://coin-or.github.io/Ipopt/OPTIONS.html
         # callback: https://github.com/jump-dev/Ipopt.jl#solver-specific-callback
-        # sb="yes": remove ipopt header +++ make that default
-        # solve by IPOPT: +++ later use more advanced call for callback use
-        print_level = display ?  print_level : 0
+        # sb="yes": remove ipopt header
+        if !display
+            print_level = 0
+        end
         ipopt_solution = ipopt(nlp, print_level=print_level, mu_strategy=mu_strategy, sb="yes"; kwargs...)
     end
 
