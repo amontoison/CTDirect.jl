@@ -95,7 +95,13 @@ function parse_ipopt_sol(ctd)
     # states and controls variables, with box multipliers
     nlp_x = ctd.NLP_solution
     mult_L = ctd.NLP_stats.multipliers_L
+    if length(mult_L) == 0
+        mult_L = zeros(ctd.dim_NLP_variables)
+    end
     mult_U = ctd.NLP_stats.multipliers_U
+    if length(mult_U) == 0
+        mult_U = zeros(ctd.dim_NLP_variables)
+    end
     X = zeros(N+1,nx)
     mult_state_box_lower = zeros(N+1,nx)
     mult_state_box_upper = zeros(N+1,nx)
@@ -105,32 +111,24 @@ function parse_ipopt_sol(ctd)
     U_step = zeros(N+1,m)
 
     # parse state variables and box multipliers
-    for i in 1:N+1
-        X[i,:] = get_state_at_time_step(nlp_x, i-1, nx, N)
-        if length(mult_L) > 0
-            mult_state_box_lower[i,:] = get_state_at_time_step(mult_L, i-1, nx, N)        
-        end
-        if length(mult_U) > 0
-            mult_state_box_upper[i,:] = get_state_at_time_step(mult_U, i-1, nx, N)
-        end
+    for i in 0:N
+        X[i+1,:] = get_state_at_time_step(nlp_x, i, nx, N)
+        mult_state_box_lower[i+1,:] = get_state_at_time_step(mult_L, i, nx, N)        
+        mult_state_box_upper[i+1,:] = get_state_at_time_step(mult_U, i, nx, N)
     end
 
     # parse control variables and box multipliers
-    for i in 1:N
+    for i in 0:N-1
         for j in 1:s
-            U[(i-1)*s + j,:] = get_control_at_time_stage(nlp_x, i-1, j, nx, N, m, s)
-            if length(mult_L) > 0
-                mult_control_box_lower[(i-1)*s + j,:] = get_control_at_time_stage(mult_L, i-1, j, nx, N, m, s)
-            end
-            if length(mult_U) > 0
-                mult_control_box_upper[(i-1)*s + j,:] = get_control_at_time_stage(mult_U, i-1, j, nx, N, m, s)
-            end
+            U[i*s + j,:] = get_control_at_time_stage(nlp_x, i, j, nx, N, m, s)
+            mult_control_box_lower[i*s + j,:] = get_control_at_time_stage(mult_L, i, j, nx, N, m, s)
+            mult_control_box_upper[i*s + j,:] = get_control_at_time_stage(mult_U, i, j, nx, N, m, s)
         end
     end
 
     # compute the 'average' control (constant on each step, duplicated last value for tf)
-    for i in 1:N+1
-        U_step[i,:] = get_control_at_time_step(nlp_x, i-1, nx, N, m, rk)
+    for i in 0:N
+        U_step[i+1,:] = get_control_at_time_step(nlp_x, i, nx, N, m, rk)
     end
 
     # +++ recover kstage variables (NB. they have no bounds) ?

@@ -71,9 +71,8 @@ function set_state_at_time_step!(nlp_x, x, i, nx, N)
     nlp_x[1+i*nx:(i+1)*nx] = x[1:nx]
 end
     
-function set_control_at_time_step!(nlp_x, u, i, nx, N, m, rk)
+function set_stage_controls_at_time_step!(nlp_x, u, i, nx, N, m, s)
     @assert i <= N-1 "trying to set init for u(t_i) with i >= N"
-    s = rk.stage
     start = (N+1)*nx 
     for j in 1:s
         nlp_x[start+i*m*s+(j-1)*m+1:start+i*m*s+(j-1)*m+m] = u[1:m]
@@ -104,7 +103,9 @@ function initial_guess(ctd)
         # set constant initialization for state / control variables
         for i in 0:N
             set_state_at_time_step!(nlp_x0, x_init, i, ctd.dim_NLP_state, N)
-            set_control_at_time_step!(nlp_x0, u_init, i, ctd.dim_NLP_state, N, ctd.control_dimension, ctd.rk.stage)
+        end
+        for i in 0:N-1
+            set_stage_controls_at_time_step!(nlp_x0, u_init, i, ctd.dim_NLP_state, N, ctd.control_dimension, ctd.rk.stage)
         end
     end
 
