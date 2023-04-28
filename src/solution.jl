@@ -87,7 +87,8 @@ end
 function parse_ipopt_sol(ctd)
     
     N = ctd.dim_NLP_steps
-    s = ctd.rk.stage
+    rk = ctd.rk
+    s = rk.stage
     nx = ctd.dim_NLP_state
     m = ctd.control_dimension
 
@@ -127,9 +128,9 @@ function parse_ipopt_sol(ctd)
         end
     end
 
-    # compute the 'average' control (constant on each step, duplicate last value for tf)
+    # compute the 'average' control (constant on each step, duplicated last value for tf)
     for i in 1:N+1
-        U_step[i,:] = get_control_at_time_step(nlp_, i-1, nx, N, m, ctd.rk)
+        U_step[i,:] = get_control_at_time_step(nlp_x, i-1, nx, N, m, rk)
     end
 
     # +++ recover kstage variables (NB. they have no bounds) ?

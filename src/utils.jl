@@ -8,6 +8,18 @@ function get_state_at_time_step(nlp_x, i, nx, N)
     return nlp_x[i*nx + 1 : (i+1)*nx]
 end
 
+function get_control_at_time_stage(nlp_x, i, j, nx, N, m, s)
+    """
+        return the control 
+        u(t_{ij})
+        i must be in 0:N-1
+    """
+    @assert i <= N-1 "trying to get u(t_{i,j}) for i >= N"
+    @assert 1 <= j <= s "trying to get u(t_{i,j}) for j > s"
+    start = (N+1)*nx 
+    return nlp_x[start + i*m*s + (j-1)*m + 1 : start + i*m*s + (j-1)*m + m]
+end
+
 function get_control_at_time_step(nlp_x, i, nx, N, m, rk)
     """
         return 'average control'
@@ -21,21 +33,9 @@ function get_control_at_time_step(nlp_x, i, nx, N, m, rk)
     ui = zeros(m)
     s = rk.stage
     for j in 1:s
-        ui = ui + rk.butcher_b[j] * get_control_at_time_stage(nlp_x, i, j, nx, N, m, rk)
+        ui = ui + rk.butcher_b[j] * get_control_at_time_stage(nlp_x, i, j, nx, N, m, s)
     end
     return ui 
-end
-
-function get_control_at_time_stage(nlp_x, i, j, nx, N, m, s)
-    """
-        return the control 
-        u(t_{ij})
-        i must be in 0:N-1
-    """
-    @assert i <= N-1 "trying to get u(t_{i,j}) for i >= N"
-    @assert 1 <= j <= s "trying to get u(t_{i,j}) for j > s"
-    start = (N+1)*nx 
-    return nlp_x[start + i*m*s + (j-1)*m + 1 : start + i*m*s + (j-1)*m + m]
 end
 
 function get_k_at_time_stage(nlp_x, i, j, nx, N, m, s)
