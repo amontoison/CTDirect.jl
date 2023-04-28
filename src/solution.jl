@@ -14,7 +14,7 @@ function _OptimalControlSolution(ocp, ipopt_solution, ctd)
     ctd.NLP_sol_constraints = ipopt_constraint(ipopt_solution.solution, ctd)
 
     # parse NLP variables, constraints and multipliers
-    X, U, P, sol_control_constraints, sol_state_constraints, sol_mixed_constraints, mult_control_constraints, mult_state_constraints, mult_mixed_constraints, mult_state_box_lower, mult_state_box_upper, mult_control_box_lower, mult_control_box_upper = parse_ipopt_sol(ctd)
+    X, U, P, sol_control_constraints, sol_state_constraints, sol_mixed_constraints, mult_control_constraints, mult_state_constraints, mult_mixed_constraints, mult_state_box_lower, mult_state_box_upper, mult_control_box_lower, mult_control_box_upper, U_step = parse_ipopt_sol(ctd)
 
     # variables and misc infos
     N = ctd.dim_NLP_steps
@@ -22,7 +22,10 @@ function _OptimalControlSolution(ocp, ipopt_solution, ctd)
     tf = get_final_time(ctd.NLP_solution, ctd.final_time, ctd.has_free_final_time)
     T = collect(LinRange(t0, tf, N+1))
     x = ctinterpolate(T, matrix2vec(X, 1))
-    u = ctinterpolate(T, matrix2vec(U, 1))
+    # +++ NB. interpolation on control stages may fail for RK schemes with non-distinct c_i !
+    # also, the interpolation requires the time stages grid instead of the time steps one
+    # for now, we interpolate the 'average' control that is constant on each time step 
+    u = ctinterpolate(T, matrix2vec(U_step, 1))
     p = ctinterpolate(T[1:end-1], matrix2vec(P, 1))
     sol = OptimalControlSolution()
     sol.state_dimension = ctd.state_dimension
@@ -84,38 +87,55 @@ end
 function parse_ipopt_sol(ctd)
     
     N = ctd.dim_NLP_steps
+    s = ctd.rk.stage
+    nx = ctd.dim_NLP_state
+    m = ctd.control_dimension
 
     # states and controls variables, with box multipliers
-    xu = ctd.NLP_solution
+    nlp_x = ctd.NLP_solution
     mult_L = ctd.NLP_stats.multipliers_L
     mult_U = ctd.NLP_stats.multipliers_U
-    X = zeros(N+1,ctd.dim_NLP_state)
-    U = zeros(N+1,ctd.control_dimension)
-    mult_state_box_lower = zeros(N+1,ctd.dim_NLP_state)
-    mult_state_box_upper = zeros(N+1,ctd.dim_NLP_state)
-    mult_control_box_lower = zeros(N+1,ctd.control_dimension)
-    mult_control_box_upper = zeros(N+1,ctd.control_dimension)
+    X = zeros(N+1,nx)
+    mult_state_box_lower = zeros(N+1,nx)
+    mult_state_box_upper = zeros(N+1,nx)
+    U = zeros(N*s,ctd.control_dimension)    
+    mult_control_box_lower = zeros(N*s,m)
+    mult_control_box_upper = zeros(N*s,m)
+    U_step = zeros(N+1,m)
+
+    # parse state variables and box multipliers
     for i in 1:N+1
-        # variables
-        X[i,:] = get_state_at_time_step(xu, i-1, ctd.dim_NLP_state, N)
-        +++ this below will compute the average control; rename and also get stage controls
-        +++ nb will ctinterpolate work for rk schemes with nonincreasing c_i coefficients
-        U[i,:] = get_control_at_time_step(xu, i-1, ctd.dim_NLP_state, N, ctd.control_dimension)
-        +++ skip or recover kstage variables ?
-        # box multipliers (same layout as variables !)
-        +++ check wrt new kstage variables, change for controls
+        X[i,:] = get_state_at_time_step(nlp_x, i-1, nx, N)
         if length(mult_L) > 0
-            mult_state_box_lower[i,:] = get_state_at_time_step(mult_L, i-1, ctd.dim_NLP_state, N)
-            +++mult_control_box_lower[i,:] = get_control_at_time_step(mult_L, i-1, ctd.dim_NLP_state, N, ctd.control_dimension)
+            mult_state_box_lower[i,:] = get_state_at_time_step(mult_L, i-1, nx, N)        
         end
         if length(mult_U) > 0
-            mult_state_box_upper[i,:] = get_state_at_time_step(mult_U, i-1, ctd.dim_NLP_state, N)
-            +++mult_control_box_upper[i,:] = get_control_at_time_step(mult_U, i-1, ctd.dim_NLP_state, N, ctd.control_dimension)
+            mult_state_box_upper[i,:] = get_state_at_time_step(mult_U, i-1, nx, N)
         end
     end
 
-    # constraints, costate and constraints multipliers
-    P = zeros(N, ctd.dim_NLP_state)
+    # parse control variables and box multipliers
+    for i in 1:N
+        for j in 1:s
+            U[(i-1)*s + j,:] = get_control_at_time_stage(nlp_x, i-1, j, nx, N, m, s)
+            if length(mult_L) > 0
+                mult_control_box_lower[(i-1)*s + j,:] = get_control_at_time_stage(mult_L, i-1, j, nx, N, m, s)
+            end
+            if length(mult_U) > 0
+                mult_control_box_upper[(i-1)*s + j,:] = get_control_at_time_stage(mult_U, i-1, j, nx, N, m, s)
+            end
+        end
+    end
+
+    # compute the 'average' control (constant on each step, duplicate last value for tf)
+    for i in 1:N+1
+        U_step[i,:] = get_control_at_time_step(nlp_, i-1, nx, N, m, ctd.rk)
+    end
+
+    # +++ recover kstage variables (NB. they have no bounds) ?
+
+    # parse constraints, costate and constraints multipliers
+    P = zeros(N, nx)
     lambda = ctd.NLP_stats.multipliers
     c = ctd.NLP_sol_constraints
     sol_control_constraints = zeros(N+1,ctd.dim_control_constraints)
@@ -126,10 +146,13 @@ function parse_ipopt_sol(ctd)
     mult_mixed_constraints = zeros(N+1,ctd.dim_mixed_constraints)
     index = 1
     for i in 1:N
-        +++ skip or recover kstage equations
+        # skip kstage equations (+++ recover those as well ?)
+        index = index + s*nx
+
         # state equation
-        P[i,:] = lambda[index:index+ctd.dim_NLP_state-1]
-        index = index + ctd.dim_NLP_state
+        P[i,:] = lambda[index:index+nx-1]
+        index = index + nx
+        
         # path constraints
         if ctd.has_control_constraints
             sol_control_constraints[i,:] = c[index:index+ctd.dim_control_constraints-1]
@@ -164,5 +187,5 @@ function parse_ipopt_sol(ctd)
         index = index + ctd.dim_mixed_constraints
     end
 
-    return X, U, P, sol_control_constraints, sol_state_constraints, sol_mixed_constraints, mult_control_constraints, mult_state_constraints, mult_mixed_constraints, mult_state_box_lower, mult_state_box_upper, mult_control_box_lower, mult_control_box_upper
+    return X, U, P, sol_control_constraints, sol_state_constraints, sol_mixed_constraints, mult_control_constraints, mult_state_constraints, mult_mixed_constraints, mult_state_box_lower, mult_state_box_upper, mult_control_box_lower, mult_control_box_upper, U_step
 end
