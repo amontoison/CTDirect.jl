@@ -56,6 +56,20 @@ function get_state_at_time_stage(nlp_x, i, j, nx, N, m, rk, h)
     return xij
 end
 
+function get_time_stages(time_steps, rk)
+    N = length(time_steps) - 1
+    h = time_steps[2] - time_steps[1]
+    s = rk.stage
+    time_stages = zeros(N*s)
+    for i in 1:N
+        ti = time_steps[i]
+        for j in 1:s
+            time_stages[(i-1)*s + j] = ti + h * rk.butcher_c[j]
+        end 
+    end
+    return time_stages
+end
+
 function get_final_time(nlp_x, fixed_final_time, has_free_final_time)
     if has_free_final_time 
         return nlp_x[end] 

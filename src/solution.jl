@@ -22,15 +22,15 @@ function _OptimalControlSolution(ocp, ipopt_solution, ctd)
     tf = get_final_time(ctd.NLP_solution, ctd.final_time, ctd.has_free_final_time)
     T = collect(LinRange(t0, tf, N+1))
     x = ctinterpolate(T, matrix2vec(X, 1))
-    # +++ NB. interpolation on control stages may fail for RK schemes with non-distinct c_i !
-    # also, the interpolation requires the time stages grid instead of the time steps one
-    # for now, we interpolate the 'average' control that is constant on each time step 
-    u = ctinterpolate(T, matrix2vec(U_step, 1))
     p = ctinterpolate(T[1:end-1], matrix2vec(P, 1))
+    Tstage = get_time_stages(T, ctd.rk)
+    # NB. interpolation WILL fail for all RK schemes with non strictly increasing time stages !
+    u = ctinterpolate(Tstage, matrix2vec(U, 1))
     sol = OptimalControlSolution()
     sol.state_dimension = ctd.state_dimension
     sol.control_dimension = ctd.control_dimension
     sol.times = T
+    sol.infos[:time_stages] = Tstage
     sol.time_name = ocp.time_name
     sol.state = t -> x(t)
     sol.state_names = ocp.state_names
@@ -72,8 +72,8 @@ function _OptimalControlSolution(ocp, ipopt_solution, ctd)
         sol.infos[:mult_state_box_upper] = t -> mbox_x_u(t)    
     end
     if ctd.has_control_box
-        mbox_u_l = ctinterpolate(T, matrix2vec(mult_control_box_lower, 1))
-        mbox_u_u = ctinterpolate(T, matrix2vec(mult_control_box_upper, 1))
+        mbox_u_l = ctinterpolate(Tstage, matrix2vec(mult_control_box_lower, 1))
+        mbox_u_u = ctinterpolate(Tstage, matrix2vec(mult_control_box_upper, 1))
         sol.infos[:mult_control_box_lower] = t -> mbox_u_l(t)
         sol.infos[:mult_control_box_upper] = t -> mbox_u_u(t)
     end
