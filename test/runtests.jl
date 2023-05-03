@@ -13,7 +13,7 @@ include("test_utils.jl")
     for prob in problems_list
         println("Test: ",prob.description)
         @testset "$(prob.description)" begin
-            sol = solve(prob.model, grid_size=20, print_level=0)
+            sol = solve(prob.model, grid_size=50, print_level=0)
             @test sol.objective ≈ prob.solution.objective rtol=1e-2
         end
     end        

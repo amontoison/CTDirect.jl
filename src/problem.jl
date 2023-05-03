@@ -48,12 +48,24 @@ mutable struct rk_method_data
 
     function rk_method_data(name::Symbol)
     rk = new()
-    if name == :trapeze
+    if name == :midpoint
+        rk.stage  = 1
+        rk.butcher_a = reshape([0.5],1,1)
+        rk.butcher_b = [1]
+        rk.butcher_c = [0.5]
+        rk.properties = Dict(:name => "implicit_midpoint", :order => 2, :implicit => true)
+    elseif name == :trapeze
         rk.stage  = 2
-        rk.butcher_a = [0 0; 0.5 0.5]
+        rk.butcher_a = [0 0; 0.5]
         rk.butcher_b = [0.5, 0.5]
         rk.butcher_c = [0, 1]
-        rk.properties = Dict(:name => "trapeze", :order => 2, :implicite => true)
+        rk.properties = Dict(:name => "trapeze", :order => 2, :implicit => true)
+    elseif name == :gauss2
+        rk_stage = 2
+        rk.butcher_a = [0.25 0.25 - sqrt(3)/6; 0.25 + sqrt(3)/6 0.25]
+        rk.butcher_b = [0.5, 0.5]
+        rk.butcher_c = [0.5 - sqrt(3)/6, 0.5 + sqrt(3)/6]
+        rk.properties = Dict(:name => "Gauss II (Hammer Hollingworth", :order => 4; :implicit => true, :Astable => true, :Bstable => true, :symplectic => true, :ref => "Geometric Numerical Integration Table 1.1 p34")
     else
         error(name, " method not yet implemented")
     end

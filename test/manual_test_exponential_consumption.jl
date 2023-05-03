@@ -25,5 +25,5 @@ constraint!(ocp, :dynamics, (x, u) -> -x + u)
 objective!(ocp, :lagrange, (x, u) -> abs(u))
 #objective!(ocp, :lagrange, (x, u) -> sqrt(u*u))
 
-sol = solve(ocp, grid_size=20, print_level=5)
+sol = solve(ocp, grid_size=50, print_level=5)
 p1 = plot(sol)

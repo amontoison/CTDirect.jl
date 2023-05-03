@@ -4,7 +4,7 @@ using CTProblems
 
 
 # double integrator - energy min
-prob = Problem(:integrator, :dim2, :energy)
+prob = Problem(:integrator, :energy)
 ocp = prob.model
 
 # initial guess (constant state and control functions)
