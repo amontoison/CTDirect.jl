@@ -7,8 +7,9 @@ STATE VARIABLES:
 with x_i the state at time step i (dim n)
 
 CONTROL VARIABLES: 
-[u_0^1 ,.., u_0^s,  ...  , u_{N-1}^1 ,.., u_{N-1}^s]
-with u_i^j the control at time step i and stage j (dim m)
+[u_0^1 ,.., u_0^{s_u},  ...  , u_{N-1}^1 ,.., u_{N-1}^{s_u}]
+with u_i^j the control at time step i and ''stage'' j (dim m). We take into account the  case where time_stage are equal and the case where c_1=0 and c_s=1 (call Lobatto case)
+u_tf = u_{N-1}^s if we are in the Lobatto case
 
 KSTAGE VARIABLES:
 [k_0^1 ,.., k_0^s,  ...  , k_{N-1}^1 ,.., k_{N-1}^s]
@@ -40,7 +41,12 @@ BOUNDARY CONDITIONS
 
 # struct for ocop/nlp info
 mutable struct rk_method_data
+    t0_true::Bool
+    t1_true::Bool
+    lobatto::Bool
     stage::Integer
+    s_u::Integer    # number of different c_j (-1 if Lobatto case)
+    u_stage::Vector{Int}   # u_stage[j] = j' the ''stage'' index in U
     butcher_a::Matrix{<:MyNumber}
     butcher_b::Vector{<:MyNumber}
     butcher_c::Vector{<:MyNumber}
@@ -48,24 +54,83 @@ mutable struct rk_method_data
 
     function rk_method_data(name::Symbol)
     rk = new()
-    if name == :midpoint
+    if name == :exp_euler
         rk.stage = 1
-        rk.butcher_a = reshape([0.5],1,1)
+        rk.butcher_a = zeros(1,1)
+        rk.butcher_b = [1]
+        rk.butcher_c = [0]
+        rk.t0_true = true
+        rk.t1_true = false
+        rk.lobatto = rk.t0_true && rk.t1_true
+        rk.s_u = 1
+        rk.u_stage = [1]
+        rk.properties = Dict(:name => "explicit Euler", :order => 1, :implicit => false)
+    elseif name == :imp_euler
+        rk.stage = 1
+        rk.butcher_a = ones(1,1)
+        rk.butcher_b = [1]
+        rk.butcher_c = [1]
+        rk.t0_true = false
+        rk.t1_true = true
+        rk.lobatto = rk.t0_true && rk.t1_true
+        rk.s_u = 1
+        rk.u_stage = [1]
+        rk.properties = Dict(:name => "implicit Euler", :order => 1, :implicit => true)
+    elseif name == :midpoint
+        rk.stage = 1
+        rk.butcher_a = 0.5*ones(1,1)
         rk.butcher_b = [1]
         rk.butcher_c = [0.5]
+        rk.t0_true = false
+        rk.t1_true = false
+        rk.lobatto = rk.t0_true && rk.t1_true
+        rk.s_u = rk.stage
+        rk.u_stage = [1]
         rk.properties = Dict(:name => "implicit_midpoint", :order => 2, :implicit => true)
     elseif name == :trapeze
         rk.stage = 2
         rk.butcher_a = [0 0; 0.5 0.5]
         rk.butcher_b = [0.5, 0.5]
         rk.butcher_c = [0, 1]
+        rk.t0_true = true
+        rk.t1_true = true
+        rk.lobatto = rk.t0_true && rk.t1_true
+        rk.s_u = 1
+        rk.u_stage = [1, 2]
         rk.properties = Dict(:name => "trapeze", :order => 2, :implicit => true)
     elseif name == :gauss2
         rk.stage = 2
         rk.butcher_a = [0.25 (0.25 - sqrt(3)/6); (0.25 + sqrt(3)/6) 0.25]
         rk.butcher_b = [0.5, 0.5]
         rk.butcher_c = [(0.5 - sqrt(3)/6), (0.5 + sqrt(3)/6)]
+        rk.t0_true = false
+        rk.t1_true = false
+        rk.lobatto = rk.t0_true && rk.t1_true
+        rk.s_u = 2
+        rk.u_stage = [1, 2]
         rk.properties = Dict(:name => "Gauss II (Hammer Hollingworth)", :order => 4, :implicit => true, :Astable => true, :Bstable => true, :symplectic => true, :ref => "Geometric Numerical Integration Table 1.1 p34")
+    elseif name == :test_butcher1
+        rk.stage = 5
+        rk.butcher_a = ones(rk.stage,rk.stage)
+        rk.butcher_b = ones(rk.stage)
+        rk.butcher_c = [0,0.2,0.2,0.2,0.4]
+        rk.t0_true = true
+        rk.t1_true = false
+        rk.lobatto = rk.t0_true && rk.t1_true
+        rk.s_u = 3
+        rk.u_stage = [1, 2, 2, 2, 3]
+        rk.properties = Dict(:name => "test_butcher1")
+    elseif name == :test_butcher2
+        rk.stage = 5
+        rk.butcher_a = ones(rk.stage,rk.stage)
+        rk.butcher_b = ones(rk.stage)
+        rk.butcher_c = [0,0.2,0.2,0.2,0.4,1,1]
+        rk.t0_true = true
+        rk.t1_true = false
+        rk.lobatto = rk.t0_true && rk.t1_true
+        rk.s_u = 3
+        rk.u_stage = [1, 2, 2, 2, 3,4,4]
+        rk.properties = Dict(:name => "test_butcher1")
     else
         error(name, " method not yet implemented")
     end
@@ -196,7 +261,10 @@ mutable struct CTDirect_data
         ctd.criterion_min_max = ocp.criterion
 
         # additional variable for free final time
-        ctd.dim_NLP_variables = (N + 1) * ctd.dim_NLP_state + N * ctd.rk.stage * (ctd.control_dimension + ctd.dim_NLP_state)
+        ctd.dim_NLP_variables = (N + 1) * ctd.dim_NLP_state + N * ctd.rk.s_u * ctd.control_dimension + N * ctd.rk.stage * ctd.dim_NLP_state
+        if ctd.rk.lobatto  # case c_0=0 and c_s=1
+            ctd.dim_NLP_variables = ctd.dim_NLP_variables + ctd.control_dimension
+        end
         if ctd.has_free_final_time
             ctd.dim_NLP_variables =  ctd.dim_NLP_variables + 1
         end
@@ -285,6 +353,8 @@ function variables_bounds(ctd)
 
     N = ctd.dim_NLP_steps
     s = ctd.rk.stage
+    s_u = ctd.rk.s_u
+    u_stage = ctd.rk.u_stage
     l_var = -Inf*ones(ctd.dim_NLP_variables)
     u_var = Inf*ones(ctd.dim_NLP_variables)
 
@@ -304,15 +374,23 @@ function variables_bounds(ctd)
     # control box
     if ctd.has_control_box
         index = (N+1)*ctd.dim_NLP_state 
-        for i in 0:N
-            for l in 1:s
+        for i in 1:N
+            for l in 1:s_u
                 for j in 1:ctd.dim_control_box
-                    indice = ctd.control_box[2][j]
+                    indice = u_stage[ctd.control_box[2][j]]
                     l_var[index+indice] = ctd.control_box[1][j]
                     u_var[index+indice] = ctd.control_box[3][j]
                 end
             end
-            index = index + s * ctd.control_dimension
+            index = index + s_u * ctd.control_dimension
+        end
+        if lobatto
+            for j in 1:ctd.dim_control_box
+                indice = u_stage[ctd.control_box[2][j]]
+                l_var[index+indice] = ctd.control_box[1][j]
+                u_var[index+indice] = ctd.control_box[3][j]
+            end
+            index = index + ctd.control_dimension
         end
     end
 
@@ -379,9 +457,9 @@ function ipopt_constraint(nlp_x, ctd)
         # stage equation
         for j in 1:s
             tij = ti + rk.butcher_c[j]*h
-            kij = get_k_at_time_stage(nlp_x, i, j, nx, N, m, s)
-            xij = get_state_at_time_stage(nlp_x, i, j, nx, N, m, ctd.rk, h)
-            uij = get_control_at_time_stage(nlp_x, i, j, nx, N, m, s)
+            kij = get_k_at_time_stage(nlp_x, i, j, nx, N, m, rk)
+            xij = get_state_at_time_stage(nlp_x, i, j, nx, N, m, rk, h)
+            uij = get_control_at_time_stage(nlp_x, i, j, nx, N, m, rk)
             c[index:index+nx-1] = kij - ctd.dynamics_lagrange_to_mayer(tij, xij, uij)
             index = index + nx
         end
@@ -391,7 +469,7 @@ function ipopt_constraint(nlp_x, ctd)
         xip1 = get_state_at_time_step(nlp_x, i+1, nx, N)
         sum_bk = zeros(nx)
         for j in 1:s
-            sum_bk = sum_bk + rk.butcher_b[j] * get_k_at_time_stage(nlp_x, i, j, nx, N, m, s)
+            sum_bk = sum_bk + rk.butcher_b[j] * get_k_at_time_stage(nlp_x, i, j, nx, N, m, rk)
         end
         c[index:index+nx-1] = xip1 - (xi + h * sum_bk)
         index = index + nx

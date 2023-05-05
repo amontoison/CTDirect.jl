@@ -25,6 +25,8 @@ function _OptimalControlSolution(ocp, ipopt_solution, ctd)
     p = ctinterpolate(T[1:end-1], matrix2vec(P, 1))
     Tstage = get_time_stages(T, ctd.rk)
     # NB. interpolation WILL fail for all RK schemes with non strictly increasing time stages !
+    println("size(Tstage) = ",size(Tstage))
+    println("size(U) = ",size(U))
     u = ctinterpolate(Tstage, matrix2vec(U, 1))
     sol = OptimalControlSolution()
     sol.state_dimension = ctd.state_dimension
@@ -89,6 +91,7 @@ function parse_ipopt_sol(ctd)
     N = ctd.dim_NLP_steps
     rk = ctd.rk
     s = rk.stage
+    s_u = rk.s_u
     nx = ctd.dim_NLP_state
     m = ctd.control_dimension
 
@@ -105,9 +108,13 @@ function parse_ipopt_sol(ctd)
     X = zeros(N+1,nx)
     mult_state_box_lower = zeros(N+1,nx)
     mult_state_box_upper = zeros(N+1,nx)
-    U = zeros(N*s,ctd.control_dimension)    
-    mult_control_box_lower = zeros(N*s,m)
-    mult_control_box_upper = zeros(N*s,m)
+    dim1_U = N*s_u
+    if rk.lobatto
+        dim1_U = dim1_U  + 1
+    end
+    U = zeros(dim1_U,ctd.control_dimension)    
+    mult_control_box_lower = zeros(dim1_U,m)
+    mult_control_box_upper = zeros(dim1_U,m)
     U_step = zeros(N+1,m)
 
     # parse state variables and box multipliers
@@ -120,10 +127,15 @@ function parse_ipopt_sol(ctd)
     # parse control variables and box multipliers
     for i in 0:N-1
         for j in 1:s
-            U[i*s + j,:] = get_control_at_time_stage(nlp_x, i, j, nx, N, m, s)
-            mult_control_box_lower[i*s + j,:] = get_control_at_time_stage(mult_L, i, j, nx, N, m, s)
-            mult_control_box_upper[i*s + j,:] = get_control_at_time_stage(mult_U, i, j, nx, N, m, s)
+            U[i*s_u + rk.u_stage[j],:] = get_control_at_time_stage(nlp_x, i, j, nx, N, m, rk)
+            mult_control_box_lower[i*s_u + rk.u_stage[j],:] = get_control_at_time_stage(mult_L, i, j, nx, N, m, rk)
+            mult_control_box_upper[i*s_u + rk.u_stage[j],:] = get_control_at_time_stage(mult_U, i, j, nx, N, m, rk)
         end
+    end
+    if rk.lobatto
+        U[end,:] = get_control_at_time_stage(nlp_x, N-1, rk.stage, nx, N, m, rk)
+            mult_control_box_lower[end,:] = get_control_at_time_stage(mult_L, N-1, rk.stage, nx, N, m, rk)
+            mult_control_box_upper[end,:] = get_control_at_time_stage(mult_U, N-1, rk.stage, nx, N, m, rk)
     end
 
     # compute the 'average' control (constant on each step, duplicated last value for tf)
