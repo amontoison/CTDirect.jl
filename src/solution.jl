@@ -25,7 +25,12 @@ function _OptimalControlSolution(ocp, ipopt_solution, ctd)
     p = ctinterpolate(T[1:end-1], matrix2vec(P, 1))
     Tstage = get_time_stages(T, ctd.rk)
     # NB. interpolation WILL fail for all RK schemes with non strictly increasing time stages !
-    u = ctinterpolate(Tstage, matrix2vec(U, 1))
+    # for now use null function as placeholder in these cases
+    if ctd.rk.name == :trapeze
+        u = t -> 0
+    else
+        u = ctinterpolate(Tstage, matrix2vec(U, 1))
+    end
     sol = OptimalControlSolution()
     sol.state_dimension = ctd.state_dimension
     sol.control_dimension = ctd.control_dimension
@@ -72,8 +77,13 @@ function _OptimalControlSolution(ocp, ipopt_solution, ctd)
         sol.infos[:mult_state_box_upper] = t -> mbox_x_u(t)    
     end
     if ctd.has_control_box
-        mbox_u_l = ctinterpolate(Tstage, matrix2vec(mult_control_box_lower, 1))
-        mbox_u_u = ctinterpolate(Tstage, matrix2vec(mult_control_box_upper, 1))
+        if ctd.rk.name == :trapeze
+            mbox_u_l = t -> 0
+            mbox_u_u = t -> 0
+        else
+            mbox_u_l = ctinterpolate(Tstage, matrix2vec(mult_control_box_lower, 1))
+            mbox_u_u = ctinterpolate(Tstage, matrix2vec(mult_control_box_upper, 1))
+        end
         sol.infos[:mult_control_box_lower] = t -> mbox_u_l(t)
         sol.infos[:mult_control_box_upper] = t -> mbox_u_u(t)
     end

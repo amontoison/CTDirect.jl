@@ -33,6 +33,7 @@ k_i^j the kstage variables at time step i and stage j
 PATH CONSTRAINTS:
 (state contraints, control constraints, mixed constraints)
 NB path constraints are evaluated at time steps (including tf) and not at time stages !
++++ this is in particular the case for pure control constraints, which would more naturally be on stages...
 
 BOUNDARY CONDITIONS
 
@@ -40,6 +41,7 @@ BOUNDARY CONDITIONS
 
 # struct for ocop/nlp info
 mutable struct rk_method_data
+    name::Symbol
     stage::Integer
     butcher_a::Matrix{<:MyNumber}
     butcher_b::Vector{<:MyNumber}
@@ -48,24 +50,25 @@ mutable struct rk_method_data
 
     function rk_method_data(name::Symbol)
     rk = new()
+    rk.name = name
     if name == :midpoint
         rk.stage = 1
         rk.butcher_a = reshape([0.5],1,1)
         rk.butcher_b = [1]
         rk.butcher_c = [0.5]
-        rk.properties = Dict(:name => "implicit_midpoint", :order => 2, :implicit => true)
+        rk.properties = Dict(:desc => "implicit_midpoint", :order => 2, :implicit => true)
     elseif name == :trapeze
         rk.stage = 2
         rk.butcher_a = [0 0; 0.5 0.5]
         rk.butcher_b = [0.5, 0.5]
         rk.butcher_c = [0, 1]
-        rk.properties = Dict(:name => "trapeze", :order => 2, :implicit => true)
+        rk.properties = Dict(:desc => "trapeze", :order => 2, :implicit => true)
     elseif name == :gauss2
         rk.stage = 2
         rk.butcher_a = [0.25 (0.25 - sqrt(3)/6); (0.25 + sqrt(3)/6) 0.25]
         rk.butcher_b = [0.5, 0.5]
         rk.butcher_c = [(0.5 - sqrt(3)/6), (0.5 + sqrt(3)/6)]
-        rk.properties = Dict(:name => "Gauss II (Hammer Hollingworth)", :order => 4, :implicit => true, :Astable => true, :Bstable => true, :symplectic => true, :ref => "Geometric Numerical Integration Table 1.1 p34")
+        rk.properties = Dict(:desc => "Gauss II (Hammer Hollingworth)", :order => 4, :implicit => true, :Astable => true, :Bstable => true, :symplectic => true, :ref => "Geometric Numerical Integration Table 1.1 p34")
     else
         error(name, " method not yet implemented")
     end
