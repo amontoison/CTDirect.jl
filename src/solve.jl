@@ -48,7 +48,6 @@ function solve(ocp::OptimalControlModel,
     # Model: from ocp to nlp
     if :adnlp in method
         ctd = CTDirect_data(ocp, grid_size, rk_method, init)
-        println("ctf.rk = ", ctd.rk)
         xu0 = initial_guess(ctd)
         l_var, u_var = variables_bounds(ctd)
         lb, ub = constraints_bounds(ctd)

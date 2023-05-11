@@ -25,8 +25,6 @@ function _OptimalControlSolution(ocp, ipopt_solution, ctd)
     p = ctinterpolate(T[1:end-1], matrix2vec(P, 1))
     Tstage = get_time_stages(T, ctd.rk)
     # NB. interpolation WILL fail for all RK schemes with non strictly increasing time stages !
-    println("size(Tstage) = ",size(Tstage))
-    println("size(U) = ",size(U))
     u = ctinterpolate(Tstage, matrix2vec(U, 1))
     sol = OptimalControlSolution()
     sol.state_dimension = ctd.state_dimension

@@ -40,6 +40,9 @@ BOUNDARY CONDITIONS
 =#
 
 # struct for ocop/nlp info
+liste_of_rk_methods = (:exp_euler, :imp_euler, :midpoint, :trapeze, :gauss2)
+liste_of_rk_methods_for_tests = (liste_of_rk_methods..., :test_butcher1, :test_butcher2)
+
 mutable struct rk_method_data
     t0_true::Bool
     t1_true::Bool
@@ -384,7 +387,7 @@ function variables_bounds(ctd)
             end
             index = index + s_u * ctd.control_dimension
         end
-        if lobatto
+        if ctd.rk.lobatto
             for j in 1:ctd.dim_control_box
                 indice = u_stage[ctd.control_box[2][j]]
                 l_var[index+indice] = ctd.control_box[1][j]
