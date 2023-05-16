@@ -34,6 +34,7 @@ function solve(ocp::OptimalControlModel,
     description...;
     grid_size::Integer=__grid_size_direct(),
     rk_method:: Symbol=__rk_method(),
+    control_disc_method::Symbol=__control_disc_method(),
     print_level::Integer=__print_level_ipopt(),
     mu_strategy::String=__mu_strategy_ipopt(),
     display::Bool=__display(),

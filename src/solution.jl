@@ -24,13 +24,19 @@ function _OptimalControlSolution(ocp, ipopt_solution, ctd)
     x = ctinterpolate(T, matrix2vec(X, 1))
     p = ctinterpolate(T[1:end-1], matrix2vec(P, 1))
     Tstage = get_time_stages(T, ctd.rk)
-    # NB. interpolation WILL fail for all RK schemes with non strictly increasing time stages !
-    # for now use null function as placeholder in these cases
-    if ctd.rk.name == :trapeze
-        u = t -> 0
+    if ctd.control_disc_method == :stage
+        # NB. interpolation WILL fail for all RK schemes with non strictly increasing time stages !
+        # for now use null function as placeholder in these cases
+        if ctd.rk.name == :trapeze
+            u = t -> 0
+        else
+            u = ctinterpolate(Tstage, matrix2vec(U, 1))
+        end
+    elseif control_disc_method == :step
+        u = ctinterpolate(T[1:end-1], matrix2vec(U, 1))
     else
-        u = ctinterpolate(Tstage, matrix2vec(U, 1))
-    end
+        error("control_disc_method should be :stage or :step and is ", control_disc_method)
+    end 
     sol = OptimalControlSolution()
     sol.state_dimension = ctd.state_dimension
     sol.control_dimension = ctd.control_dimension
@@ -77,13 +83,21 @@ function _OptimalControlSolution(ocp, ipopt_solution, ctd)
         sol.infos[:mult_state_box_upper] = t -> mbox_x_u(t)    
     end
     if ctd.has_control_box
-        if ctd.rk.name == :trapeze
-            mbox_u_l = t -> 0
-            mbox_u_u = t -> 0
+        # see remark above
+        if ctd.control_disc_method == :stage
+            if ctd.rk.name == :trapeze
+                mbox_u_l = t -> 0
+                mbox_u_u = t -> 0
+            else
+                mbox_u_l = ctinterpolate(Tstage, matrix2vec(mult_control_box_lower, 1))
+                mbox_u_u = ctinterpolate(Tstage, matrix2vec(mult_control_box_upper, 1))
+            end
+        elseif ctd.control_disc_method == :step
+            mbox_u_l = ctinterpolate(T[1:end-1], matrix2vec(mult_control_box_lower, 1))
+            mbox_u_u = ctinterpolate(T[1:end-1], matrix2vec(mult_control_box_upper, 1))
         else
-            mbox_u_l = ctinterpolate(Tstage, matrix2vec(mult_control_box_lower, 1))
-            mbox_u_u = ctinterpolate(Tstage, matrix2vec(mult_control_box_upper, 1))
-        end
+            error("control_disc_method should be :stage or :step and is ", control_disc_method)
+        end 
         sol.infos[:mult_control_box_lower] = t -> mbox_u_l(t)
         sol.infos[:mult_control_box_upper] = t -> mbox_u_u(t)
     end
@@ -99,6 +113,7 @@ function parse_ipopt_sol(ctd)
     N = ctd.dim_NLP_steps
     rk = ctd.rk
     s = rk.stage
+    control_disc_method = ctd.control_disc_method
     nx = ctd.dim_NLP_state
     m = ctd.control_dimension
 
@@ -115,9 +130,17 @@ function parse_ipopt_sol(ctd)
     X = zeros(N+1,nx)
     mult_state_box_lower = zeros(N+1,nx)
     mult_state_box_upper = zeros(N+1,nx)
-    U = zeros(N*s,ctd.control_dimension)    
-    mult_control_box_lower = zeros(N*s,m)
-    mult_control_box_upper = zeros(N*s,m)
+    if control_disc_method == :stage
+        U = zeros(N*s,ctd.control_dimension)    
+        mult_control_box_lower = zeros(N*s,m)
+        mult_control_box_upper = zeros(N*s,m)
+    elseif control_disc_method == :step
+        U = zeros(N,ctd.control_dimension)    
+        mult_control_box_lower = zeros(N,m)
+        mult_control_box_upper = zeros(N,m)
+    else
+        error("control_disc_method should be :stage or :step and is ", control_disc_method)
+    end 
     U_step = zeros(N+1,m)
 
     # parse state variables and box multipliers
@@ -129,16 +152,24 @@ function parse_ipopt_sol(ctd)
 
     # parse control variables and box multipliers
     for i in 0:N-1
-        for j in 1:s
-            U[i*s + j,:] = get_control_at_time_stage(nlp_x, i, j, nx, N, m, s)
-            mult_control_box_lower[i*s + j,:] = get_control_at_time_stage(mult_L, i, j, nx, N, m, s)
-            mult_control_box_upper[i*s + j,:] = get_control_at_time_stage(mult_U, i, j, nx, N, m, s)
+        if control_disc_method == :stage
+            for j in 1:s
+                U[i*s + j,:] = get_control_at_time_stage(nlp_x, i, j, nx, N, m, s, control_disc_method)
+                mult_control_box_lower[i*s + j,:] = get_control_at_time_stage(mult_L, i, j, nx, N, m, s, control_disc_method)
+                mult_control_box_upper[i*s + j,:] = get_control_at_time_stage(mult_U, i, j, nx, N, m, s, control_disc_method)
+            end
+        elseif control_disc_method == :step
+            U[i+1,:] = get_control_at_time_step(nlp_x, i, nx, N, m, rk, control_disc_method)
+            mult_control_box_lower[i+1,:] = get_control_at_time_step(mult_L, i, nx, N, m, rk, control_disc_method)
+            mult_control_box_upper[i+1,:] = get_control_at_time_step(mult_U, i, nx, N, m, rk, control_disc_method)
+        else
+            error("control_disc_method should be :stage or :step and is ", control_disc_method)
         end
     end
 
     # compute the 'average' control (constant on each step, duplicated last value for tf)
     for i in 0:N
-        U_step[i+1,:] = get_control_at_time_step(nlp_x, i, nx, N, m, rk)
+        U_step[i+1,:] = get_control_at_time_step(nlp_x, i, nx, N, m, rk, control_disc_method)
     end
 
     # +++ recover kstage variables (NB. they have no bounds) ?

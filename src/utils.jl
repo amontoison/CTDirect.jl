@@ -1,3 +1,5 @@
+# NB. pass ctd to all get/set functions instead of individual parameters ?
+
 function get_state_at_time_step(nlp_x, i, nx, N)
     """
         return
@@ -8,7 +10,7 @@ function get_state_at_time_step(nlp_x, i, nx, N)
     return nlp_x[i*nx + 1 : (i+1)*nx]
 end
 
-function get_control_at_time_stage(nlp_x, i, j, nx, N, m, s)
+function get_control_at_time_stage(nlp_x, i, j, nx, N, m, s, control_disc_method)
     """
         return the control 
         u(t_{ij})
@@ -16,11 +18,19 @@ function get_control_at_time_stage(nlp_x, i, j, nx, N, m, s)
     """
     @assert i <= N-1 "trying to get u(t_{i,j}) for i >= N"
     @assert 1 <= j <= s "trying to get u(t_{i,j}) for j > s"
+    u = zeros(m)
     start = (N+1)*nx 
-    return nlp_x[start + i*m*s + (j-1)*m + 1 : start + i*m*s + (j-1)*m + m]
+    if control_disc_method == :stage
+        u = nlp_x[start + i*m*s + (j-1)*m + 1 : start + i*m*s + (j-1)*m + m]
+    elseif control_disc_method == :step
+        u = nlp_x[start + i*m + 1 : start + i*m + m]
+    else
+        error("control_disc_method should be :stage or :step and is ", control_disc_method)
+    end
+    return u
 end
 
-function get_control_at_time_step(nlp_x, i, nx, N, m, rk)
+function get_control_at_time_step(nlp_x, i, nx, N, m, rk, control_disc_method)
     """
         return 'average control'
         u(t_i) = sum_j=1..s b_j u_i^s
@@ -30,12 +40,19 @@ function get_control_at_time_step(nlp_x, i, nx, N, m, rk)
     if i == N
         i = N-1
     end
-    ui = zeros(m)
-    s = rk.stage
-    for j in 1:s
-        ui = ui + rk.butcher_b[j] * get_control_at_time_stage(nlp_x, i, j, nx, N, m, s)
-    end
-    return ui 
+    u = zeros(m)
+    if control_disc_method == :stage    
+        s = rk.stage
+        for j in 1:s
+            u = u + rk.butcher_b[j] * get_control_at_time_stage(nlp_x, i, j, nx, N, m, s, control_disc_method)
+        end
+    elseif control_disc_method == :step
+        start = (N+1)*nx 
+        u = nlp_x[start + i*m + 1 : start + i*m + m]
+    else
+        error("control_disc_method should be :stage or :step and is ", control_disc_method)
+    end        
+    return u
 end
 
 function get_k_at_time_stage(nlp_x, i, j, nx, N, m, s)
@@ -85,12 +102,18 @@ function set_state_at_time_step!(nlp_x, x, i, nx, N)
     nlp_x[1+i*nx:(i+1)*nx] = x[1:nx]
 end
     
-function set_stage_controls_at_time_step!(nlp_x, u, i, nx, N, m, s)
+function set_stage_controls_at_time_step!(nlp_x, u, i, nx, N, m, s, control_disc_method)
     @assert i <= N-1 "trying to set init for u(t_i) with i >= N"
-    start = (N+1)*nx 
-    for j in 1:s
-        nlp_x[start+i*m*s+(j-1)*m+1:start+i*m*s+(j-1)*m+m] = u[1:m]
-    end
+    start = (N+1)*nx
+    if control_disc_method == :stage    
+        for j in 1:s
+            nlp_x[start+i*m*s+(j-1)*m+1:start+i*m*s+(j-1)*m+m] = u[1:m]
+        end
+    elseif control_disc_method == :step
+        nlp_x[start+i*m+1:start+i*m+m] = u[1:m]
+    else
+        error("control_disc_method should be :stage or :step and is ", control_disc_method)
+    end  
 end
 
 function initial_guess(ctd)
@@ -119,7 +142,7 @@ function initial_guess(ctd)
             set_state_at_time_step!(nlp_x0, x_init, i, ctd.dim_NLP_state, N)
         end
         for i in 0:N-1
-            set_stage_controls_at_time_step!(nlp_x0, u_init, i, ctd.dim_NLP_state, N, ctd.control_dimension, ctd.rk.stage)
+            set_stage_controls_at_time_step!(nlp_x0, u_init, i, ctd.dim_NLP_state, N, ctd.control_dimension, ctd.rk.stage, ctd.control_disc_method)
         end
     end
 

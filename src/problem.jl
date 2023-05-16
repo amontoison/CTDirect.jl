@@ -9,6 +9,9 @@ with x_i the state at time step i (dim n)
 CONTROL VARIABLES: 
 [u_0^1 ,.., u_0^s,  ...  , u_{N-1}^1 ,.., u_{N-1}^s]
 with u_i^j the control at time step i and stage j (dim m)
+OR
+[u_0, u_1 ... u_N-1]
+with u_i the control over time step i i.e. interval [t_i, t_i+1] (dim m)
 
 KSTAGE VARIABLES:
 [k_0^1 ,.., k_0^s,  ...  , k_{N-1}^1 ,.., k_{N-1}^s]
@@ -124,7 +127,11 @@ mutable struct CTDirect_data
     dim_NLP_constraints
     dim_NLP_variables
     dim_NLP_steps       # grid_size
-    rk::rk_method_data  
+    rk::rk_method_data
+    control_disc_method
+    dim_NLP_variables_state
+    dim_NLP_variables_control
+    dim_NLP_variables_stage
     dynamics_lagrange_to_mayer
     NLP_init
 
@@ -136,7 +143,7 @@ mutable struct CTDirect_data
     NLP_iterations
     NLP_stats       # remove later ? type is https://juliasmoothoptimizers.github.io/SolverCore.jl/stable/reference/#SolverCore.GenericExecutionStats
 
-    function CTDirect_data(ocp::OptimalControlModel, N::Integer, rk_method::Symbol, init=nothing)
+    function CTDirect_data(ocp::OptimalControlModel, N::Integer, rk_method::Symbol, control_disc_method::Symbol, init=nothing)
 
         ctd = new()
 
@@ -198,8 +205,19 @@ mutable struct CTDirect_data
         # min or max problem (unused ?)
         ctd.criterion_min_max = ocp.criterion
 
+        # NLP variables [X, U, K]
+        ctd.dim_NLP_variables_state = (N + 1) * ctd.dim_NLP_state
+        ctd.dim_NLP_variables_stage = N * ctd.rk.stage * ctd.dim_NLP_state
+        if ctd.control_disc_method == :stage
+            ctd.dim_NLP_variables_control = N * ctd.rk.stage * ctd.control_dimension
+        elseif ctd.control_disc_method == :step
+            ctd.dim_NLP_variables_control = N * ctd.control_dimension
+        else
+            error("control_disc_method should be :stage or :step and is ", ctd.control_disc_method)
+        end
+        ctd.dim_NLP_variables = ctd.dim_NLP_variables_state + ctd.dim_NLP_variables_control + ctd.dim_NLP_variables_stage
+
         # additional variable for free final time
-        ctd.dim_NLP_variables = (N + 1) * ctd.dim_NLP_state + N * ctd.rk.stage * (ctd.control_dimension + ctd.dim_NLP_state)
         if ctd.has_free_final_time
             ctd.dim_NLP_variables =  ctd.dim_NLP_variables + 1
         end
@@ -306,16 +324,27 @@ function variables_bounds(ctd)
 
     # control box
     if ctd.has_control_box
-        index = (N+1)*ctd.dim_NLP_state 
-        for i in 0:N
-            for l in 1:s
+        index = ctd.dim_NLP_variables_state
+        for i in 0:N-1  #N-1 here !
+            if ctd.control_disc_method == :stage
+                for l in 1:s
+                    for j in 1:ctd.dim_control_box
+                        indice = ctd.control_box[2][j]
+                        l_var[index+indice] = ctd.control_box[1][j]
+                        u_var[index+indice] = ctd.control_box[3][j]
+                    end
+                end
+                index = index + s * ctd.control_dimension
+            elseif ctd.control_disc_method == :step
                 for j in 1:ctd.dim_control_box
                     indice = ctd.control_box[2][j]
                     l_var[index+indice] = ctd.control_box[1][j]
                     u_var[index+indice] = ctd.control_box[3][j]
                 end
+                index = index + ctd.control_dimension
+            else
+                error("control_disc_method should be :stage or :step and is ", ctd.control_disc_method)
             end
-            index = index + s * ctd.control_dimension
         end
     end
 
@@ -384,7 +413,7 @@ function ipopt_constraint(nlp_x, ctd)
             tij = ti + rk.butcher_c[j]*h
             kij = get_k_at_time_stage(nlp_x, i, j, nx, N, m, s)
             xij = get_state_at_time_stage(nlp_x, i, j, nx, N, m, ctd.rk, h)
-            uij = get_control_at_time_stage(nlp_x, i, j, nx, N, m, s)
+            uij = get_control_at_time_stage(nlp_x, i, j, nx, N, m, s, ctd.control_disc_method)
             c[index:index+nx-1] = kij - ctd.dynamics_lagrange_to_mayer(tij, xij, uij)
             index = index + nx
         end
@@ -400,7 +429,7 @@ function ipopt_constraint(nlp_x, ctd)
         index = index + nx
 
         # path constraints
-        ui = get_control_at_time_step(nlp_x, i, nx, N, m, rk)
+        ui = get_control_at_time_step(nlp_x, i, nx, N, m, rk, ctd.control_disc_method)
         if ctd.has_control_constraints
             c[index:index+ctd.dim_control_constraints-1] = ctd.control_constraints[2](ti, ui)
             index = index + ctd.dim_control_constraints
@@ -417,7 +446,7 @@ function ipopt_constraint(nlp_x, ctd)
 
     # path constraints at final time
     xf = get_state_at_time_step(nlp_x, N, nx, N)
-    uf = get_control_at_time_step(nlp_x, N, nx, N, m, rk)
+    uf = get_control_at_time_step(nlp_x, N, nx, N, m, rk, control_disc_method)
     if ctd.has_control_constraints
         c[index:index+ctd.dim_control_constraints-1] = ctd.control_constraints[2](tf, uf)      
         index = index + ctd.dim_control_constraints
