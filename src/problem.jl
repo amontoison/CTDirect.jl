@@ -367,8 +367,8 @@ function ipopt_objective(nlp_x, ctd)
     obj = 0
     
     if ctd.has_mayer_cost
-        x0 = get_state_at_time_step(nlp_x, 0, ctd.dim_NLP_state, N)
-        xf = get_state_at_time_step(nlp_x, N, ctd.dim_NLP_state, N)
+        x0 = get_state_at_time_step(nlp_x, 0, ctd)
+        xf = get_state_at_time_step(nlp_x, N, ctd)
         obj = obj + ctd.mayer(t0, x0[1:ctd.state_dimension], tf, xf[1:ctd.state_dimension])
     end
     
@@ -413,25 +413,25 @@ function ipopt_constraint(nlp_x, ctd)
         # stage equation
         for j in 1:s
             tij = ti + rk.butcher_c[j]*h
-            kij = get_k_at_time_stage(nlp_x, i, j, nx, N, m, s)
-            xij = get_state_at_time_stage(nlp_x, i, j, nx, N, m, rk, h)
-            uij = get_control_at_time_stage(nlp_x, i, j, nx, N, m, s, control_disc_method)
+            kij = get_k_at_time_stage(nlp_x, i, j, ctd)
+            xij = get_state_at_time_stage(nlp_x, i, j, ctd, h)
+            uij = get_control_at_time_stage(nlp_x, i, j, ctd)
             c[index:index+nx-1] = kij - ctd.dynamics_lagrange_to_mayer(tij, xij, uij)
             index = index + nx
         end
 
         # state equation
-        xi = get_state_at_time_step(nlp_x, i, nx, N)
-        xip1 = get_state_at_time_step(nlp_x, i+1, nx, N)
+        xi = get_state_at_time_step(nlp_x, i, ctd)
+        xip1 = get_state_at_time_step(nlp_x, i+1, ctd)
         sum_bk = zeros(nx)
         for j in 1:s
-            sum_bk = sum_bk + rk.butcher_b[j] * get_k_at_time_stage(nlp_x, i, j, nx, N, m, s)
+            sum_bk = sum_bk + rk.butcher_b[j] * get_k_at_time_stage(nlp_x, i, j, ctd)
         end
         c[index:index+nx-1] = xip1 - (xi + h * sum_bk)
         index = index + nx
 
         # path constraints
-        ui = get_control_at_time_step(nlp_x, i, nx, N, m, rk, control_disc_method)
+        ui = get_control_at_time_step(nlp_x, i, ctd)
         if ctd.has_control_constraints
             c[index:index+ctd.dim_control_constraints-1] = ctd.control_constraints[2](ti, ui)
             index = index + ctd.dim_control_constraints
@@ -447,8 +447,8 @@ function ipopt_constraint(nlp_x, ctd)
     end
 
     # path constraints at final time
-    xf = get_state_at_time_step(nlp_x, N, nx, N)
-    uf = get_control_at_time_step(nlp_x, N, nx, N, m, rk, control_disc_method)
+    xf = get_state_at_time_step(nlp_x, N, ctd)
+    uf = get_control_at_time_step(nlp_x, N, ctd)
     if ctd.has_control_constraints
         c[index:index+ctd.dim_control_constraints-1] = ctd.control_constraints[2](tf, uf)      
         index = index + ctd.dim_control_constraints
@@ -463,7 +463,7 @@ function ipopt_constraint(nlp_x, ctd)
     end
 
     # boundary conditions
-    x0 = get_state_at_time_step(nlp_x, 0, nx, N)
+    x0 = get_state_at_time_step(nlp_x, 0, ctd)
     c[index:index+ctd.dim_boundary_conditions-1] = ctd.boundary_conditions[2](t0, x0[1:ctd.state_dimension], tf, xf[1:ctd.state_dimension])
     index = index + ctd.dim_boundary_conditions
     # null initial condition for augmented state (reformulated lagrangian cost)
