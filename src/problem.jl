@@ -181,6 +181,7 @@ mutable struct CTDirect_data
         ## Non Linear Programming NLP
         ctd.dim_NLP_steps = N
         ctd.rk = rk_method_data(rk_method)
+        ctd.control_disc_method = control_disc_method
         ctd.NLP_init = init
 
         # Mayer to Lagrange reformulation: 
@@ -400,6 +401,7 @@ function ipopt_constraint(nlp_x, ctd)
     nx = ctd.dim_NLP_state
     m = ctd.control_dimension
     rk = ctd.rk
+    control_disc_method = ctd.control_disc_method
     s = rk.stage
     h = (tf - t0) / N
     c = zeros(eltype(nlp_x), ctd.dim_NLP_constraints)
@@ -412,8 +414,8 @@ function ipopt_constraint(nlp_x, ctd)
         for j in 1:s
             tij = ti + rk.butcher_c[j]*h
             kij = get_k_at_time_stage(nlp_x, i, j, nx, N, m, s)
-            xij = get_state_at_time_stage(nlp_x, i, j, nx, N, m, ctd.rk, h)
-            uij = get_control_at_time_stage(nlp_x, i, j, nx, N, m, s, ctd.control_disc_method)
+            xij = get_state_at_time_stage(nlp_x, i, j, nx, N, m, rk, h)
+            uij = get_control_at_time_stage(nlp_x, i, j, nx, N, m, s, control_disc_method)
             c[index:index+nx-1] = kij - ctd.dynamics_lagrange_to_mayer(tij, xij, uij)
             index = index + nx
         end
@@ -429,7 +431,7 @@ function ipopt_constraint(nlp_x, ctd)
         index = index + nx
 
         # path constraints
-        ui = get_control_at_time_step(nlp_x, i, nx, N, m, rk, ctd.control_disc_method)
+        ui = get_control_at_time_step(nlp_x, i, nx, N, m, rk, control_disc_method)
         if ctd.has_control_constraints
             c[index:index+ctd.dim_control_constraints-1] = ctd.control_constraints[2](ti, ui)
             index = index + ctd.dim_control_constraints

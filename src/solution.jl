@@ -18,16 +18,18 @@ function _OptimalControlSolution(ocp, ipopt_solution, ctd)
 
     # variables and misc infos
     N = ctd.dim_NLP_steps
+    rk = ctd.rk
+    control_disc_method = ctd.control_disc_method
     t0 = ctd.initial_time
     tf = get_final_time(ctd.NLP_solution, ctd.final_time, ctd.has_free_final_time)
     T = collect(LinRange(t0, tf, N+1))
     x = ctinterpolate(T, matrix2vec(X, 1))
     p = ctinterpolate(T[1:end-1], matrix2vec(P, 1))
-    Tstage = get_time_stages(T, ctd.rk)
-    if ctd.control_disc_method == :stage
+    Tstage = get_time_stages(T, rk)
+    if control_disc_method == :stage
         # NB. interpolation WILL fail for all RK schemes with non strictly increasing time stages !
         # for now use null function as placeholder in these cases
-        if ctd.rk.name == :trapeze
+        if rk.name == :trapeze
             u = t -> 0
         else
             u = ctinterpolate(Tstage, matrix2vec(U, 1))
@@ -85,7 +87,7 @@ function _OptimalControlSolution(ocp, ipopt_solution, ctd)
     if ctd.has_control_box
         # see remark above
         if ctd.control_disc_method == :stage
-            if ctd.rk.name == :trapeze
+            if rk.name == :trapeze
                 mbox_u_l = t -> 0
                 mbox_u_u = t -> 0
             else

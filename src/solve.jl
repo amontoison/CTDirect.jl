@@ -33,7 +33,7 @@ julia> solve(ocp)
 function solve(ocp::OptimalControlModel,
     description...;
     grid_size::Integer=__grid_size_direct(),
-    rk_method:: Symbol=__rk_method(),
+    rk_method::Symbol=__rk_method(),
     control_disc_method::Symbol=__control_disc_method(),
     print_level::Integer=__print_level_ipopt(),
     mu_strategy::String=__mu_strategy_ipopt(),
@@ -48,7 +48,7 @@ function solve(ocp::OptimalControlModel,
 
     # Model: from ocp to nlp
     if :adnlp in method
-        ctd = CTDirect_data(ocp, grid_size, rk_method, init)
+        ctd = CTDirect_data(ocp, grid_size, rk_method, control_disc_method, init)
         xu0 = initial_guess(ctd)
         l_var, u_var = variables_bounds(ctd)
         lb, ub = constraints_bounds(ctd)
