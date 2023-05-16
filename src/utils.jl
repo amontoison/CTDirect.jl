@@ -78,7 +78,7 @@ function get_k_at_time_stage(nlp_x, i, j, ctd)
 end
 
 
-function get_state_at_time_stage(nlp_x, i, j, h, ctd)
+function get_state_at_time_stage(nlp_x, i, j, ctd, h)
     N = ctd.dim_NLP_steps
     s = ctd.rk.stage    
     @assert i <= N-1 "trying to get x_i^j for i >= N"
