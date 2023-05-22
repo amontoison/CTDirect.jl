@@ -25,7 +25,7 @@ check_control_box = false
 # solve problem
 println("Solving test problem...")
 init = [1.01, 0.05, 0.8, 0.1]
-sol = solve(ocp, grid_size=50, print_level=5, tol=1e-8, init=init)
+sol = solve(ocp, grid_size=50, print_level=5, tol=1e-8, max_iter=100, init=init, rk_method=:gauss2, control_disc_method=:stage)
 t0 = sol.times[1]
 tf = last(sol.times)
 t = sol.times
