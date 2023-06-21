@@ -18,7 +18,7 @@ constraint!(ocp, :control, -1, 1, :control_constraint)
 dynamics!(ocp, (x, u) ->  -x+u)
 objective!(ocp, :lagrange, (x, u) -> x[1]^2 + u^2)
 f = ocp.dynamics
-lag1 = ocp.lagrange
+lag = ocp.lagrange
 v = Real[]
 
 function test_scalar_vector(f)
@@ -48,12 +48,20 @@ println("x_vector = ", x_vector)
     @test f(t0,[1,2],[1,1],v) ==[0,-1] # pass
  #   @test f(t0,2,[1],v) == -1        # fail
  #   @test f(t0,[2],1,v) == -1        # fail
- #   @test f(t0,[2],[1],v) == -1      # fail
+ #   @test f(t0,[2],[1],v) == -1      # fail f return vector
      @test f(t0,[2],[1],v) == [-1]      # pass
  #   @test f(t0,[2,4],[1],v) == -1    # fail
  #   @test f(t0,x0[1:1],[1],v) == -1  # fail
- #   @test lag(t0,x0[1],1,v) == 5      # fail
+    @test lag(t0,x0[1],1,v) == 5      # pass !
 end 
+
+
+function fct(x::Real,u::Real)
+    return -x+u
+end
+
+println("fct(2,3) = ",fct(2,3))
+# println("fct(2,3) = ",fct([2],3)) # fail
 
 n=1
 m=1
