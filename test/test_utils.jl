@@ -18,3 +18,14 @@ function distance_L2(u:: Function, u_sol:: Function, T::TimesDisc)
     dT = T[2:end]-T[1:end-1]
     return  sum(dT .* [ abs(u(T[i])-u_sol(T[i])) for i ∈ 1:N-1] )
 end
+
+
+function vector_scalar(u)
+    if typeof(u) <: Real
+        return u
+    elseif length(u) == 1
+        return u[1]
+    else
+        return u
+    end
+end
